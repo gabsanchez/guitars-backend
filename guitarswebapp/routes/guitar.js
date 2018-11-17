@@ -2,7 +2,9 @@ var express = require('express'),
     router = express.Router(),
     mongoose = require('mongoose'), //mongo connection
     bodyParser = require('body-parser'), //parses information from POST
-    methodOverride = require('method-override'); //used to manipulate POST
+    methodOverride = require('method-override'), //used to manipulate POST
+    redisClient = require('redis').createClient,
+    redis = redisClient(6379, 'localhost');
 
 router.use(bodyParser.urlencoded({ extended: true }));
 router.use(methodOverride(function(req, res){
@@ -18,15 +20,16 @@ router.use(methodOverride(function(req, res){
 router.route('/')
     //GET all guitars
     .get(function(req, res, next) {
-        //retrieve all blobs from Monogo
+        //retrieve all guitars from Monogo
         mongoose.model('Guitar').find({}, function (err, guitars) {
-              if (err) {
-                  return console.error(err);
-              } else {
-                  //respond to both HTML and JSON. JSON responses require 'Accept: application/json;' in the Request Header
-                  res.json(guitars);
-              }     
+            if (err) {
+                return console.error(err);
+            } else {
+                //respond to both HTML and JSON. JSON responses require 'Accept: application/json;' in the Request Header
+                res.json(guitars);
+            }     
         });
+        
     })
     //POST a new guitar
     .post(function(req, res) {
@@ -49,33 +52,42 @@ router.route('/')
         });
     });
 
-    //GET the individual blob by Mongo ID
+    //GET the individual guitar
 router.get('/:id/edit', function(req, res) {
-    //search for the blob within Mongo
-    mongoose.model('Guitar').findById(req.id, function (err, guitar) {
-        if (err) {
-            console.log('GET Error: There was a problem retrieving: ' + err);
-        } else {
-            //Return the blob
-            console.log('GET Retrieving ID: ' + guitar._id);
-            res.json(guitar);
+    redis.get(req.params.id, (err, response) => {
+        if (err) next(err);
+        else if(response)//the guitar is in cache
+            res.json(JSON.parse(response));
+        else{
+            //search for the guitar within Mongo
+            mongoose.model('Guitar').findById(req.params.id, function (err, guitar) {
+                if (err) {
+                    console.log('GET Error: There was a problem retrieving: ' + err);
+                } else {
+                    //Set the guitar to the cache server and return the value
+                    redis.set(req.params.id, JSON.stringify(guitar), function () {
+                        res.json(guitar);
+                    });
+                }
+            });
         }
     });
 });
 
 router.put('/:id/edit', function(req, res) {
-
+    var newGuitar = {
+        id: req.body.id,
+        imageUrl: req.body.imageUrl,
+        brand: req.body.brand,
+        type: req.body.type,
+        owner: req.body.owner,
+        likes: req.body.likes
+    }
+    redis.set(req.params.id, JSON.stringify(newGuitar));
    //find the document by ID
-        mongoose.model('Guitar').findById(req.id, function (err, guitar) {
+        mongoose.model('Guitar').findById(req.params.id, function (err, guitar) {
             //update it
-            guitar.update({
-                id: req.body.id,
-                imageUrl: req.body.imageUrl,
-                brand: req.body.brand,
-                type: req.body.type,
-                owner: req.body.owner,
-                likes: req.body.likes
-            }, function (err, blobID) {
+            guitar.update(newGuitar, function (err, guitarId) {
               if (err) {
                   res.send("There was a problem updating the information to the database: " + err);
               } 
@@ -89,7 +101,7 @@ router.put('/:id/edit', function(req, res) {
 //DELETE a Blob by ID
 router.delete('/:id/edit', function (req, res){
     //find blob by ID
-    mongoose.model('Guitar').findById(req.id, function (err, guitar) {
+    mongoose.model('Guitar').findById(req.params.id, function (err, guitar) {
         if (err) {
             return console.error(err);
         } else {
