@@ -3,9 +3,9 @@ var express = require('express'),
     mongoose = require('mongoose'), //mongo connection
     bodyParser = require('body-parser'), //parses information from POST
     methodOverride = require('method-override'), //used to manipulate POST
-    redisClient = require('redis').createClient,
-    redis = redisClient(6379, 'localhost');
-
+    redisClient = require('redis'),
+    redis = redisClient.createClient(6379, 'redis');
+    redis.on('connect', () => console.log('Connected to Redis') );
 router.use(bodyParser.urlencoded({ extended: true }));
 router.use(methodOverride(function(req, res){
       if (req.body && typeof req.body === 'object' && '_method' in req.body) {

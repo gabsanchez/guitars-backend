@@ -1,2 +1,2 @@
 var mongoose = require('mongoose');
-mongoose.connect('mongodb://localhost/guitarswebappp');
+mongoose.connect('mongodb://mongo/guitarswebappp', { useNewUrlParser: true });
